@@ -1,8 +1,10 @@
 import asyncio
 from enum import Enum
+from typing import List
 
 import pandas as pd
 from fastapi import FastAPI
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -14,20 +16,26 @@ class Status(Enum):
     stopped = "stopped"
 
 
+class Settings(BaseModel):
+    sleep_delay: int = 15
+
+
 class LiquidExtractor:
     status: Status = Status.idle
     results: pd.DataFrame = pd.DataFrame()
+    settings: Settings = Settings()
 
     _loop = asyncio.get_event_loop()
 
-    def start(self):
+    def start(self, settings):
         print("Starting")
+        self.settings = settings
         self.status = Status.running
         self.results = pd.DataFrame()
-        self._loop.create_task(self.finish())
+        self._loop.create_task(self.finish(settings.sleep_delay))
 
-    async def finish(self):
-        await asyncio.sleep(15)
+    async def finish(self, delay):
+        await asyncio.sleep(delay)
         print("Finished")
         self.results = pd.read_csv("data.csv")
         self.status = Status.finished
@@ -36,6 +44,12 @@ class LiquidExtractor:
         print("Stopping")
         self.status = Status.stopped
         self.results = pd.DataFrame()
+
+
+class Response(BaseModel):
+    status: Status
+    settings: Settings | None = None
+    results: List[List[int]] | None = None
 
 
 extractor = LiquidExtractor()
@@ -48,21 +62,28 @@ def get_root():
 
 @app.get("/start")
 def do_start():
-    extractor.start()
-    return {"status": extractor.status.value}
+    settings = Settings(sleep_delay=15)
+    extractor.start(settings)
+    return Response(status=extractor.status, settings=extractor.settings)
+
+
+@app.post("/start")
+def post_start(settings: Settings):
+    extractor.start(settings)
+    return Response(status=extractor.status, settings=extractor.settings)
 
 
 @app.get("/status")
 def get_status():
-    return {"status": extractor.status.value}
+    return Response(status=extractor.status, settings=extractor.settings)
 
 
 @app.get("/stop")
 def do_stop():
     extractor.stop()
-    return {"status": extractor.status.value}
+    return Response(status=extractor.status, settings=extractor.settings)
 
 
 @app.get("/results")
 def get_results():
-    return {"results": extractor.results.to_numpy().tolist()}
+    return Response(status=extractor.status, settings=extractor.settings, results=extractor.results.to_numpy().tolist())
