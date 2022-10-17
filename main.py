@@ -25,14 +25,15 @@ class LiquidExtractor:
     results: pd.DataFrame = pd.DataFrame()
     settings: Settings = Settings()
 
-    _loop = asyncio.get_event_loop()
+    _loop = asyncio.get_running_loop()
+    _task: asyncio.Task = None
 
     def start(self, settings):
         print("Starting")
         self.settings = settings
         self.status = Status.running
         self.results = pd.DataFrame()
-        self._loop.create_task(self.finish(settings.sleep_delay))
+        self._task = self._loop.create_task(self.finish(settings.sleep_delay))
 
     async def finish(self, delay):
         await asyncio.sleep(delay)
@@ -42,6 +43,7 @@ class LiquidExtractor:
 
     def stop(self):
         print("Stopping")
+        self._task.cancel()
         self.status = Status.stopped
         self.results = pd.DataFrame()
 
